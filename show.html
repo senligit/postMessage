@@ -14,6 +14,7 @@
             window.onload = function() {
                 console.log('get key value......................')
                 window.frames[0].postMessage(JSON.stringify({type:"GET",key:"key1"}),'*');
+                console.log(localStorage)
             }
             window.addEventListener('message', function(e) {
                 console.log('listen.....');
