@@ -12,7 +12,7 @@
           /*本地数据存储*/
 
           setLocalCookie: function (msg) {
-
+window.localStorage.setItem('1', JSON.stringify(msg))
  var db = new Dexie("goods_database");
           db.version(1).stores({
               items: 'id,shop,src,alt,datas,uptime,lastsale,growth'
