@@ -17,7 +17,7 @@
           db.version(1).stores({
               items: 'id,shop,src,alt,datas,uptime,lastsale,growth'
           });
-
+console.log('setLocalCookie')
           db.items.put({
 	          id:msg.id,
 	          shop:msg.shop,
@@ -67,6 +67,7 @@ db.items.toCollection().modify(item => {
           },
           init:function(){
               this.bindEvent();
+		  console.log('init')
           },
 
           bindEvent:function(){
@@ -76,7 +77,7 @@ db.items.toCollection().modify(item => {
               win.addEventListener("message",function(evt){
 
                   if(win.parent!=evt.source){return}
-
+ console.log(evt.data)
                   var options=JSON.parse(evt.data);
 
                   //if(options.type=="GET"){
