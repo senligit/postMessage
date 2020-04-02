@@ -1,0 +1,586 @@
+.<html5>
+<head>
+	<script type="text/javascript">
+
+		/*
+ * Dexie.js - a minimalistic wrapper for IndexedDB
+ * ===============================================
+ *
+ * By David Fahlander, david.fahlander@gmail.com
+ *
+ * Version 2.0.4, Fri May 25 2018
+ *
+ * http://dexie.org
+ *
+ * Apache License Version 2.0, January 2004, http://www.apache.org/licenses/
+ */
+ 
+(function (global, factory) {
+		typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+		typeof define === 'function' && define.amd ? define(factory) :
+		(global.Dexie = factory());
+	}(this, (function () { 'use strict';
+
+	var keys = Object.keys;
+	var isArray = Array.isArray;
+	var _global = typeof self !== 'undefined' ? self :
+	    typeof window !== 'undefined' ? window :
+	        global;
+	function extend(obj, extension) {
+	    if (typeof extension !== 'object')
+	        return obj;
+	    keys(extension).forEach(function (key) {
+	        obj[key] = extension[key];
+	    });
+	    return obj;
+	}
+	var getProto = Object.getPrototypeOf;
+	var _hasOwn = {}.hasOwnProperty;
+	function hasOwn(obj, prop) {
+	    return _hasOwn.call(obj, prop);
+	}
+	function props(proto, extension) {
+	    if (typeof extension === 'function')
+	        extension = extension(getProto(proto));
+	    keys(extension).forEach(function (key) {
+	        setProp(proto, key, extension[key]);
+	    });
+	}
+	var defineProperty = Object.defineProperty;
+	function setProp(obj, prop, functionOrGetSet, options) {
+	    defineProperty(obj, prop, extend(functionOrGetSet && hasOwn(functionOrGetSet, "get") && typeof functionOrGetSet.get === 'function' ?
+	        { get: functionOrGetSet.get, set: functionOrGetSet.set, configurable: true } :
+	        { value: functionOrGetSet, configurable: true, writable: true }, options));
+	}
+	function derive(Child) {
+	    return {
+	        from: function (Parent) {
+	            Child.prototype = Object.create(Parent.prototype);
+	            setProp(Child.prototype, "constructor", Child);
+	            return {
+	                extend: props.bind(null, Child.prototype)
+	            };
+	        }
+	    };
+	}
+	var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+	function getPropertyDescriptor(obj, prop) {
+	    var pd = getOwnPropertyDescriptor(obj, prop), proto;
+	    return pd || (proto = getProto(obj)) && getPropertyDescriptor(proto, prop);
+	}
+	var _slice = [].slice;
+	function slice(args, start, end) {
+	    return _slice.call(args, start, end);
+	}
+	function override(origFunc, overridedFactory) {
+	    return overridedFactory(origFunc);
+	}
+	function assert(b) {
+	    if (!b)
+	        throw new Error("Assertion Failed");
+	}
+	function asap(fn) {
+	    if (_global.setImmediate)
+	        setImmediate(fn);
+	    else
+	        setTimeout(fn, 0);
+	}
+
+	/** Generate an object (hash map) based on given array.
+	 * @param extractor Function taking an array item and its index and returning an array of 2 items ([key, value]) to
+	 *        instert on the resulting object for each item in the array. If this function returns a falsy value, the
+	 *        current item wont affect the resulting object.
+	 */
+	function arrayToObject(array, extractor) {
+	    return array.reduce(function (result, item, i) {
+	        var nameAndValue = extractor(item, i);
+	        if (nameAndValue)
+	            result[nameAndValue[0]] = nameAndValue[1];
+	        return result;
+	    }, {});
+	}
+	function trycatcher(fn, reject) {
+	    return function () {
+	        try {
+	            fn.apply(this, arguments);
+	        }
+	        catch (e) {
+	            reject(e);
+	        }
+	    };
+	}
+	function tryCatch(fn, onerror, args) {
+	    try {
+	        fn.apply(null, args);
+	    }
+	    catch (ex) {
+	        onerror && onerror(ex);
+	    }
+	}
+	function getByKeyPath(obj, keyPath) {
+	    // http://www.w3.org/TR/IndexedDB/#steps-for-extracting-a-key-from-a-value-using-a-key-path
+	    if (hasOwn(obj, keyPath))
+	        return obj[keyPath]; // This line is moved from last to first for optimization purpose.
+	    if (!keyPath)
+	        return obj;
+	    if (typeof keyPath !== 'string') {
+	        var rv = [];
+	        for (var i = 0, l = keyPath.length; i < l; ++i) {
+	            var val = getByKeyPath(obj, keyPath[i]);
+	            rv.push(val);
+	        }
+	        return rv;
+	    }
+	    var period = keyPath.indexOf('.');
+	    if (period !== -1) {
+	        var innerObj = obj[keyPath.substr(0, period)];
+	        return innerObj === undefined ? undefined : getByKeyPath(innerObj, keyPath.substr(period + 1));
+	    }
+	    return undefined;
+	}
+	function setByKeyPath(obj, keyPath, value) {
+	    if (!obj || keyPath === undefined)
+	        return;
+	    if ('isFrozen' in Object && Object.isFrozen(obj))
+	        return;
+	    if (typeof keyPath !== 'string' && 'length' in keyPath) {
+	        assert(typeof value !== 'string' && 'length' in value);
+	        for (var i = 0, l = keyPath.length; i < l; ++i) {
+	            setByKeyPath(obj, keyPath[i], value[i]);
+	        }
+	    }
+	    else {
+	        var period = keyPath.indexOf('.');
+	        if (period !== -1) {
+	            var currentKeyPath = keyPath.substr(0, period);
+	            var remainingKeyPath = keyPath.substr(period + 1);
+	            if (remainingKeyPath === "")
+	                if (value === undefined)
+	                    delete obj[currentKeyPath];
+	                else
+	                    obj[currentKeyPath] = value;
+	            else {
+	                var innerObj = obj[currentKeyPath];
+	                if (!innerObj)
+	                    innerObj = (obj[currentKeyPath] = {});
+	                setByKeyPath(innerObj, remainingKeyPath, value);
+	            }
+	        }
+	        else {
+	            if (value === undefined)
+	                delete obj[keyPath];
+	            else
+	                obj[keyPath] = value;
+	        }
+	    }
+	}
+	function delByKeyPath(obj, keyPath) {
+	    if (typeof keyPath === 'string')
+	        setByKeyPath(obj, keyPath, undefined);
+	    else if ('length' in keyPath)
+	        [].map.call(keyPath, function (kp) {
+	            setByKeyPath(obj, kp, undefined);
+	        });
+	}
+	function shallowClone(obj) {
+	    var rv = {};
+	    for (var m in obj) {
+	        if (hasOwn(obj, m))
+	            rv[m] = obj[m];
+	    }
+	    return rv;
+	}
+	var concat = [].concat;
+	function flatten(a) {
+	    return concat.apply([], a);
+	}
+	//https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
+	var intrinsicTypes = "Boolean,String,Date,RegExp,Blob,File,FileList,ArrayBuffer,DataView,Uint8ClampedArray,ImageData,Map,Set"
+	    .split(',').concat(flatten([8, 16, 32, 64].map(function (num) { return ["Int", "Uint", "Float"].map(function (t) { return t + num + "Array"; }); }))).filter(function (t) { return _global[t]; }).map(function (t) { return _global[t]; });
+	function deepClone(any) {
+	    if (!any || typeof any !== 'object')
+	        return any;
+	    var rv;
+	    if (isArray(any)) {
+	        rv = [];
+	        for (var i = 0, l = any.length; i < l; ++i) {
+	            rv.push(deepClone(any[i]));
+	        }
+	    }
+	    else if (intrinsicTypes.indexOf(any.constructor) >= 0) {
+	        rv = any;
+	    }
+	    else {
+	        rv = any.constructor ? Object.create(any.constructor.prototype) : {};
+	        for (var prop in any) {
+	            if (hasOwn(any, prop)) {
+	                rv[prop] = deepClone(any[prop]);
+	            }
+	        }
+	    }
+	    return rv;
+	}
+	function getObjectDiff(a, b, rv, prfx) {
+	    // Compares objects a and b and produces a diff object.
+	    rv = rv || {};
+	    prfx = prfx || '';
+	    keys(a).forEach(function (prop) {
+	        if (!hasOwn(b, prop))
+	            rv[prfx + prop] = undefined; // Property removed
+	        else {
+	            var ap = a[prop], bp = b[prop];
+	            if (typeof ap === 'object' && typeof bp === 'object' &&
+	                ap && bp &&
+	                // Now compare constructors are same (not equal because wont work in Safari)
+	                ('' + ap.constructor) === ('' + bp.constructor))
+	                // Same type of object but its properties may have changed
+	                getObjectDiff(ap, bp, rv, prfx + prop + ".");
+	            else if (ap !== bp)
+	                rv[prfx + prop] = b[prop]; // Primitive value changed
+	        }
+	    });
+	    keys(b).forEach(function (prop) {
+	        if (!hasOwn(a, prop)) {
+	            rv[prfx + prop] = b[prop]; // Property added
+	        }
+	    });
+	    return rv;
+	}
+	// If first argument is iterable or array-like, return it as an array
+	var iteratorSymbol = typeof Symbol !== 'undefined' && Symbol.iterator;
+	var getIteratorOf = iteratorSymbol ? function (x) {
+	    var i;
+	    return x != null && (i = x[iteratorSymbol]) && i.apply(x);
+	} : function () { return null; };
+	var NO_CHAR_ARRAY = {};
+	// Takes one or several arguments and returns an array based on the following criteras:
+	// * If several arguments provided, return arguments converted to an array in a way that
+	//   still allows javascript engine to optimize the code.
+	// * If single argument is an array, return a clone of it.
+	// * If this-pointer equals NO_CHAR_ARRAY, don't accept strings as valid iterables as a special
+	//   case to the two bullets below.
+	// * If single argument is an iterable, convert it to an array and return the resulting array.
+	// * If single argument is array-like (has length of type number), convert it to an array.
+	function getArrayOf(arrayLike) {
+	    var i, a, x, it;
+	    if (arguments.length === 1) {
+	        if (isArray(arrayLike))
+	            return arrayLike.slice();
+	        if (this === NO_CHAR_ARRAY && typeof arrayLike === 'string')
+	            return [arrayLike];
+	        if ((it = getIteratorOf(arrayLike))) {
+	            a = [];
+	            while ((x = it.next()), !x.done)
+	                a.push(x.value);
+	            return a;
+	        }
+	        if (arrayLike == null)
+	            return [arrayLike];
+	        i = arrayLike.length;
+	        if (typeof i === 'number') {
+	            a = new Array(i);
+	            while (i--)
+	                a[i] = arrayLike[i];
+	            return a;
+	        }
+	        return [arrayLike];
+	    }
+	    i = arguments.length;
+	    a = new Array(i);
+	    while (i--)
+	        a[i] = arguments[i];
+	    return a;
+	}
+
+	// By default, debug will be true only if platform is a web platform and its page is served from localhost.
+	// When debug = true, error's stacks will contain asyncronic long stacks.
+	var debug = typeof location !== 'undefined' &&
+	    // By default, use debug mode if served from localhost.
+	    /^(http|https):\/\/(localhost|127\.0\.0\.1)/.test(location.href);
+	function setDebug(value, filter) {
+	    debug = value;
+	    libraryFilter = filter;
+	}
+	var libraryFilter = function () { return true; };
+	var NEEDS_THROW_FOR_STACK = !new Error("").stack;
+	function getErrorWithStack() {
+	    "use strict";
+	    if (NEEDS_THROW_FOR_STACK)
+	        try {
+	            // Doing something naughty in strict mode here to trigger a specific error
+	            // that can be explicitely ignored in debugger's exception settings.
+	            // If we'd just throw new Error() here, IE's debugger's exception settings
+	            // will just consider it as "exception thrown by javascript code" which is
+	            // something you wouldn't want it to ignore.
+	            getErrorWithStack.arguments;
+	            throw new Error(); // Fallback if above line don't throw.
+	        }
+	        catch (e) {
+	            return e;
+	        }
+	    return new Error();
+	}
+	function prettyStack(exception, numIgnoredFrames) {
+	    var stack = exception.stack;
+	    if (!stack)
+	        return "";
+	    numIgnoredFrames = (numIgnoredFrames || 0);
+	    if (stack.indexOf(exception.name) === 0)
+	        numIgnoredFrames += (exception.name + exception.message).split('\n').length;
+	    return stack.split('\n')
+	        .slice(numIgnoredFrames)
+	        .filter(libraryFilter)
+	        .map(function (frame) { return "\n" + frame; })
+	        .join('');
+	}
+	function deprecated(what, fn) {
+	    return function () {
+	        console.warn(what + " is deprecated. See https://github.com/dfahlander/Dexie.js/wiki/Deprecations. " + prettyStack(getErrorWithStack(), 1));
+	        return fn.apply(this, arguments);
+	    };
+	}
+
+	var dexieErrorNames = [
+	    'Modify',
+	    'Bulk',
+	    'OpenFailed',
+	    'VersionChange',
+	    'Schema',
+	    'Upgrade',
+	    'InvalidTable',
+	    'MissingAPI',
+	    'NoSuchDatabase',
+	    'InvalidArgument',
+	    'SubTransaction',
+	    'Unsupported',
+	    'Internal',
+	    'DatabaseClosed',
+	    'PrematureCommit',
+	    'ForeignAwait'
+	];
+	var idbDomErrorNames = [
+	    'Unknown',
+	    'Constraint',
+	    'Data',
+	    'TransactionInactive',
+	    'ReadOnly',
+	    'Version',
+	    'NotFound',
+	    'InvalidState',
+	    'InvalidAccess',
+	    'Abort',
+	    'Timeout',
+	    'QuotaExceeded',
+	    'Syntax',
+	    'DataClone'
+	];
+	var errorList = dexieErrorNames.concat(idbDomErrorNames);
+	var defaultTexts = {
+	    VersionChanged: "Database version changed by other database connection",
+	    DatabaseClosed: "Database has been closed",
+	    Abort: "Transaction aborted",
+	    TransactionInactive: "Transaction has already completed or failed"
+	};
+	//
+	// DexieError - base class of all out exceptions.
+	//
+	function DexieError(name, msg) {
+	    // Reason we don't use ES6 classes is because:
+	    // 1. It bloats transpiled code and increases size of minified code.
+	    // 2. It doesn't give us much in this case.
+	    // 3. It would require sub classes to call super(), which
+	    //    is not needed when deriving from Error.
+	    this._e = getErrorWithStack();
+	    this.name = name;
+	    this.message = msg;
+	}
+	derive(DexieError).from(Error).extend({
+	    stack: {
+	        get: function () {
+	            return this._stack ||
+	                (this._stack = this.name + ": " + this.message + prettyStack(this._e, 2));
+	        }
+	    },
+	    toString: function () { return this.name + ": " + this.message; }
+	});
+	function getMultiErrorMessage(msg, failures) {
+	    return msg + ". Errors: " + failures
+	        .map(function (f) { return f.toString(); })
+	        .filter(function (v, i, s) { return s.indexOf(v) === i; }) // Only unique error strings
+	        .join('\n');
+	}
+	//
+	// ModifyError - thrown in Collection.modify()
+	// Specific constructor because it contains members failures and failedKeys.
+	//
+	function ModifyError(msg, failures, successCount, failedKeys) {
+	    this._e = getErrorWithStack();
+	    this.failures = failures;
+	    this.failedKeys = failedKeys;
+	    this.successCount = successCount;
+	}
+	derive(ModifyError).from(DexieError);
+	function BulkError(msg, failures) {
+	    this._e = getErrorWithStack();
+	    this.name = "BulkError";
+	    this.failures = failures;
+	    this.message = getMultiErrorMessage(msg, failures);
+	}
+	derive(BulkError).from(DexieError);
+	//
+	//
+	// Dynamically generate error names and exception classes based
+	// on the names in errorList.
+	//
+	//
+	// Map of {ErrorName -> ErrorName + "Error"}
+	var errnames = errorList.reduce(function (obj, name) { return (obj[name] = name + "Error", obj); }, {});
+	// Need an alias for DexieError because we're gonna create subclasses with the same name.
+	var BaseException = DexieError;
+	// Map of {ErrorName -> exception constructor}
+	var exceptions = errorList.reduce(function (obj, name) {
+	    // Let the name be "DexieError" because this name may
+	    // be shown in call stack and when debugging. DexieError is
+	    // the most true name because it derives from DexieError,
+	    // and we cannot change Function.name programatically without
+	    // dynamically create a Function object, which would be considered
+	    // 'eval-evil'.
+	    var fullName = name + "Error";
+	    function DexieError(msgOrInner, inner) {
+	        this._e = getErrorWithStack();
+	        this.name = fullName;
+	        if (!msgOrInner) {
+	            this.message = defaultTexts[name] || fullName;
+	            this.inner = null;
+	        }
+	        else if (typeof msgOrInner === 'string') {
+	            this.message = msgOrInner;
+	            this.inner = inner || null;
+	        }
+	        else if (typeof msgOrInner === 'object') {
+	            this.message = msgOrInner.name + " " + msgOrInner.message;
+	            this.inner = msgOrInner;
+	        }
+	    }
+	    derive(DexieError).from(BaseException);
+	    obj[name] = DexieError;
+	    return obj;
+	}, {});
+	// Use ECMASCRIPT standard exceptions where applicable:
+	exceptions.Syntax = SyntaxError;
+	exceptions.Type = TypeError;
+	exceptions.Range = RangeError;
+	var exceptionMap = idbDomErrorNames.reduce(function (obj, name) {
+	    obj[name + "Error"] = exceptions[name];
+	    return obj;
+	}, {});
+	function mapError(domError, message) {
+	    if (!domError || domError instanceof DexieError || domError instanceof TypeError || domError instanceof SyntaxError || !domError.name || !exceptionMap[domError.name])
+	        return domError;
+	    var rv = new exceptionMap[domError.name](message || domError.message, domError);
+	    if ("stack" in domError) {
+	        // Derive stack from inner exception if it has a stack
+	        setProp(rv, "stack", { get: function () {
+	                return this.inner.stack;
+	            } });
+	    }
+	    return rv;
+	}
+	var fullNameExceptions = errorList.reduce(function (obj, name) {
+	    if (["Syntax", "Type", "Range"].indexOf(name) === -1)
+	        obj[name + "Error"] = exceptions[name];
+	    return obj;
+	}, {});
+	fullNameExceptions.ModifyError = ModifyError;
+	fullNameExceptions.DexieError = DexieError;
+	fullNameExceptions.BulkError = BulkError;
+
+	function nop() { }
+	function mirror(val) { return val; }
+	function pureFunctionChain(f1, f2) {
+	    // Enables chained events that takes ONE argument and returns it to the next function in chain.
+	    // This pattern is used in the hook("reading") event.
+	    if (f1 == null || f1 === mirror)
+	        return f2;
+	    return function (val) {
+	        return f2(f1(val));
+	    };
+	}
+	function callBoth(on1, on2) {
+	    return function () {
+	        on1.apply(this, arguments);
+	        on2.apply(this, arguments);
+	    };
+	}
+	function hookCreatingChain(f1, f2) {
+	    // Enables chained events that takes several arguments and may modify first argument by making a modification and then returning the same instance.
+	    // This pattern is used in the hook("creating") event.
+	    if (f1 === nop)
+	        return f2;
+	    return function () {
+	        var res = f1.apply(this, arguments);
+	        if (res !== undefined)
+	            arguments[0] = res;
+	        var onsuccess = this.onsuccess, // In case event listener has set this.onsuccess
+	        onerror = this.onerror; // In case event listener has set this.onerror
+	        this.onsuccess = null;
+	        this.onerror = null;
+	        var res2 = f2.apply(this, arguments);
+	        if (onsuccess)
+	            this.onsuccess = this.onsuccess ? callBoth(onsuccess, this.onsuccess) : onsuccess;
+	        if (onerror)
+	            this.onerror = this.onerror ? callBoth(onerror, this.onerror) : onerror;
+	        return res2 !== undefined ? res2 : res;
+	    };
+	}
+	function hookDeletingChain(f1, f2) {
+	    if (f1 === nop)
+	        return f2;
+	    return function () {
+	        f1.apply(this, arguments);
+	        var onsuccess = this.onsuccess, // In case event listener has set this.onsuccess
+	        onerror = this.onerror; // In case event listener has set this.onerror
+	        this.onsuccess = this.onerror = null;
+	        f2.apply(this, arguments);
+	        if (onsuccess)
+	            this.onsuccess = this.onsuccess ? callBoth(onsuccess, this.onsuccess) : onsuccess;
+	        if (onerror)
+	            this.onerror = this.onerror ? callBoth(onerror, this.onerror) : onerror;
+	    };
+	}
+	function hookUpdatingChain(f1, f2) {
+	    if (f1 === nop)
+	        return f2;
+	    return function (modifications) {
+	        var res = f1.apply(this, arguments);
+	        extend(modifications, res); // If f1 returns new modifications, extend caller's modifications with the result before calling next in chain.
+	        var onsuccess = this.onsuccess, // In case event listener has set this.onsuccess
+	        onerror = this.onerror; // In case event listener has set this.onerror
+	        this.onsuccess = null;
+	        this.onerror = null;
+	        var res2 = f2.apply(this, arguments);
+	        if (onsuccess)
+	            this.onsuccess = this.onsuccess ? callBoth(onsuccess, this.onsuccess) : onsuccess;
+	        if (onerror)
+	            this.onerror = this.onerror ? callBoth(onerror, this.onerror) : onerror;
+	        return res === undefined ?
+	            (res2 === undefined ? undefined : res2) :
+	            (extend(res, res2));
+	    };
+	}
+	function reverseStoppableEventChain(f1, f2) {
+	    if (f1 === nop)
+	        return f2;
+	    return function () {
+	        if (f2.apply(this, arguments) === false)
+	            return false;
+	        return f1.apply(this, arguments);
+	    };
+	}
+
+	function promisableChain(f1, f2) {
+	    if (f1 === nop)
+	        return f2;
+	    return function () {
+	        var res = f1.apply(this, arguments);
+	        if (res && typeof res.then === '
