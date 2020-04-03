@@ -2,23 +2,24 @@
 <head>
 <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
 <script>
-
-  var db = new Dexie("goods_database");
+var db = new Dexie("goods_database");
           db.version(1).stores({
               items: 'id,shop,src,alt,datas'
           });
   db.items.get("17128094666", function (item) {
     console.log (item);
 });
-  db.items.where('shop').equalsIgnoreCase('假不假鞋坊').toArray(function (items) {
+  db.items.where('shop').equalsIgnoreCase('细细条').toArray(function (items) {
     display(items)
   });
   function display(items){
-  var str=''
-  str=items.map(JSON.stringify).join('\n'))
-      document.body.append(str)
-  }
 
+  items.forEach((v,i,a)=>{
+var div=document.createElement("div");
+    div.innerHTML= "<p>"+"<img src='"+v.src+"'>"+v.id+"</p>"; 
+    document.body.append(div)})
+     
+  }
 </script>
 </head>
 <body>
