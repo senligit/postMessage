@@ -11,9 +11,13 @@
     console.log (item);
 });
   db.items.where('shop').equalsIgnoreCase('假不假鞋坊').toArray(function (items) {
-    console.log(items.map(JSON.stringify).join('\n'));
+    display(items)
   });
-  
+  function display(items){
+  var str=''
+  str=items.map(JSON.stringify).join('\n'))
+      document.body.append(str)
+  }
 
 </script>
 </head>
