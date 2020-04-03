@@ -34,13 +34,14 @@
   else
     db.items.put({
 	          id:msg.id,
-	          shop:msg.shop,
-	          src:msg.src,
-	          alt:msg.alt,
+	        daysale:0,
+	    grouth:0,
+	    
 	          datas:[msg.data,msg.data],
-	   	  shop:msg.shop,
-	    daysale:0,
-	    grouth:0
+	          shop:msg.shop,
+	          alt:msg.alt,
+	
+	          src:msg.src
 	          }).then (function(){
 
               return db.items.get(msg.id);
