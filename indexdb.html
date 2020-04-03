@@ -19,8 +19,11 @@
           });
           db.items.where("id").equals(msg.id).modify((value, ref) => {
 	    console.log ( ref.value);
+		if(1){
+		   ref.value.datas.push(msg.data)
+	  }
 
-ref.value.datas.push(msg.data)
+
 }).then(function (updated) {
   if (updated)
     console.log ("updated");
@@ -30,7 +33,8 @@ ref.value.datas.push(msg.data)
 	          shop:msg.shop,
 	          src:msg.src,
 	          alt:msg.alt,
-	          datas:[msg.data]
+	          datas:[msg.data],
+	   	  shop:msg.shop,
 	          }).then (function(){
 
               return db.items.get(msg.id);
