@@ -18,7 +18,7 @@
               items: 'id,shop,src,alt,datas'
           });
           db.items.where("id").equals(msg.id).modify((value, ref) => {
-	    console.log ( ref.value);
+	    //console.log ( ref.value.id);
 		if(1){
 		   ref.value.datas.push(msg.data)
 	  }
@@ -26,7 +26,7 @@
 
 }).then(function (updated) {
   if (updated)
-    console.log ("updated");
+    console.log ("updated"+msg.id);
   else
     db.items.put({
 	          id:msg.id,
@@ -39,7 +39,7 @@
 
               return db.items.get(msg.id);
           }).then(function (item) {
-             console.log ("Add : " + item.id+ item.shop+ item.src+ item.alt+ item.datas);
+             console.log ("Add : " + item.id);
           }).catch(function(error) {
  console.log ("error")
              alert ("Ooops: " + error);
