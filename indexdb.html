@@ -18,7 +18,14 @@ window.localStorage.setItem('1', JSON.stringify(msg))
               items: 'id'
           });
 console.log('setLocalCookie')
-          db.items.put({
+          
+db.items.where("id").equals(msg.id).modify((value, ref) => {
+    ref.value.data.push(msg.data)
+}).then(function (updated) {
+  if (updated)
+    console.log ("updated");
+  else
+    db.items.put(({
 	          id:msg.id,
 	          shop:msg.shop,
 	          src:msg.src,
@@ -28,14 +35,11 @@ console.log('setLocalCookie')
 
               return db.items.get(msg.id);
           }).then(function (item) {
-             console.log ("item is " + item.id+ item.shop+ item.src+ item.alt+ item.datas[0].sale);
+             console.log ("Add : " + item.id+ item.shop+ item.src+ item.alt+ item.datas);
           }).catch(function(error) {
-
+ console.log ("i")
              alert ("Ooops: " + error);
           });
-        // Convert all shoeSize from european to american size:
-db.items.toCollection().modify(item => {
-    item.shop += 'a'; // (very approximate formula...., but anyway...)
 });
 ;
               
