@@ -9,7 +9,7 @@ var db = new Dexie("goods_database");
   db.items.get("17128094666", function (item) {
     console.log (item);
 });
-  db.items.where('shop').equalsIgnoreCase('细细条').toArray(function (items) {
+  db.items.where('shop').equalsIgnoreCase('假不假鞋坊').toArray(function (items) {
     display(items)
   });
   function display(items){
