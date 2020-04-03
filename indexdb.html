@@ -7,40 +7,40 @@
 
       var fn=function(){};
 
-      fn.prototype={
+        fn.prototype={
 
           /*本地数据存储*/
-
           setLocalCookie: function (msg) {
-window.localStorage.setItem('1', JSON.stringify(msg))
- var db = new Dexie("goods_database");
+var msg={id:'id11',shop:'jbj',src:'xx.jpg',alt:'dx',data:{b:'a11'}} 
+   console.log ("msg");
+  var db = new Dexie("goods_database");
           db.version(1).stores({
-              items: 'id'
+              items: 'id,shop,src,alt,datas'
           });
-console.log('setLocalCookie')
-          
-db.items.where("id").equals(msg.id).modify((value, ref) => {
-    ref.value.data.push(msg.data)
+          db.items.where("id").equals(msg.id).modify((value, ref) => {
+	    console.log ( ref.value);
+
+ref.value.datas.push(msg.data)
 }).then(function (updated) {
   if (updated)
     console.log ("updated");
   else
-    db.items.put(({
+    db.items.put({
 	          id:msg.id,
 	          shop:msg.shop,
 	          src:msg.src,
 	          alt:msg.alt,
-	          datas:msg.datas
+	          datas:[msg.data]
 	          }).then (function(){
 
               return db.items.get(msg.id);
           }).then(function (item) {
              console.log ("Add : " + item.id+ item.shop+ item.src+ item.alt+ item.datas);
           }).catch(function(error) {
- console.log ("i")
+ console.log ("error")
              alert ("Ooops: " + error);
       })
-)});
+});
               
 
 
