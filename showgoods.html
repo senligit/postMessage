@@ -7,7 +7,9 @@
           db.version(1).stores({
               items: 'id,shop,src,alt,datas'
           });
-  
+  db.items.get("17128094666", function (item) {
+    console.log (item);
+});
   db.items.where('shop').equalsIgnoreCase('假不假鞋坊').toArray(function (items) {
     console.log(items.map(JSON.stringify).join('\n'));
   });
